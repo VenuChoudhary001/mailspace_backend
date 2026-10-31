@@ -1,0 +1,45 @@
+name: Deploy FastAPI v2 to Production
+
+on:
+  push:
+    branches:
+      - v2
+
+permissions:
+  contents: read
+
+# Queue deploys instead of running two SSH sessions against the server at once.
+concurrency:
+  group: deploy-v2-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@v1.2.5
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        # Generous: first docker build (pip install) can take a while.
+        command_timeout: 20m
+        script: |
+          # Fail fast: abort on the first error so the step (and job) goes red
+          # instead of running the remaining commands against a broken state.
+          set -e
+
+          cd "${{ secrets.APP_PATH }}"
+
+          # Fetch latest changes and reset to origin/v2
+          git fetch origin v2
+          git reset --hard origin/v2
+
+          # Rebuild and restart containers using Docker Compose
+          docker compose down
+          docker compose up --build -d
+
+          # Best-effort cleanup: never fail a successful deploy over pruning.
+          docker system prune -f || true
