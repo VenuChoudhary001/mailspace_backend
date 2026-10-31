@@ -1,5 +1,12 @@
 # services/resend_sender.py
+import httpx
+
+from app.core.config import settings
 from app.models.forward_mail import OutboundEmail
+from app.services.exceptions import PermanentSendError, TransientSendError
+
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def to_resend_payload(message: OutboundEmail) -> dict:
@@ -29,15 +36,46 @@ def to_resend_payload(message: OutboundEmail) -> dict:
 
 
 class ResendEmailSender:
-    """PLACEHOLDER for the actual Resend call.
+    """Sends outbound email via the Resend REST API.
 
-    When you implement it:
-      * POST to Resend with to_resend_payload(message), sending your API key
-        and an `Idempotency-Key: <idempotency_key>` header.
-      * Raise TransientSendError on timeouts / network errors / 429 / 5xx.
-      * Raise PermanentSendError on any other 4xx.
-      * Never log the payload or the response body.
+    Raises TransientSendError on timeouts / network errors / 429 / 5xx.
+    Raises PermanentSendError on any other 4xx.
+    Never logs the payload or the response body.
     """
 
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = RESEND_API_URL,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._api_key = api_key or settings.resend_api_key
+        self._base_url = base_url
+        self._client = client
+
     async def send(self, message: OutboundEmail, *, idempotency_key: str) -> None:
-        raise NotImplementedError
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Idempotency-Key": idempotency_key,
+            "Content-Type": "application/json",
+        }
+        owned_client = self._client is None
+        client = self._client or httpx.AsyncClient(timeout=settings.upstream_timeout_seconds)
+        try:
+            try:
+                response = await client.post(
+                    self._base_url,
+                    headers=headers,
+                    json=to_resend_payload(message),
+                )
+            except httpx.RequestError as exc:   # timeouts, DNS, refused connections, etc.
+                raise TransientSendError() from exc
+
+            if response.status_code == 429 or response.status_code >= 500:
+                raise TransientSendError()
+            if response.status_code >= 400:
+                raise PermanentSendError()
+            # 2xx: accepted by Resend, nothing to return
+        finally:
+            if owned_client:
+                await client.aclose()

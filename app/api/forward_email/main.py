@@ -1,4 +1,5 @@
 # api/forward_mail/main.py
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from pydantic_core import ValidationError
 from functools import lru_cache
@@ -22,9 +23,9 @@ def get_recipient_resolver() -> AliasRecipientResolver:
     return AliasRecipientResolver()
 
 
-@lru_cache
-def get_email_sender() -> ResendEmailSender:
-    return ResendEmailSender()
+def get_email_sender(request: Request) -> ResendEmailSender:
+    client: httpx.AsyncClient = request.app.state.http
+    return ResendEmailSender(client=client)
 
 def get_forward_service(
     resolver: AliasRecipientResolver = Depends(get_recipient_resolver),
