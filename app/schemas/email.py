@@ -1,13 +1,14 @@
-from pydantic import BaseModel, EmailStr
+# schema/forward_mail.py
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
-class EmailSchema(BaseModel):
-    to: list[EmailStr]
-    reply_to: list[EmailStr] | None = None
-    subject: str
-    html: str
+class ForwardRequest(BaseModel):
+    raw_email: str = Field(min_length=1, description="Base64-encoded RFC 822 message")
+    recipient: str = Field(min_length=3, max_length=320, description="Postfix envelope recipient")
 
 
-class EmailResponse(BaseModel):
-    message: str
-    id: str | None = None
+class ForwardResponse(BaseModel):
+    status: Literal["forwarded", "dropped"]
+    reason: str | None = None
