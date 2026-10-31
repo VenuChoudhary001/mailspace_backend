@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.api import forward_email_router
 from app.core.config import settings
 
 
@@ -268,6 +269,9 @@ def register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=503, detail="Not ready")
         # TODO: ping DB / Redis here with a short timeout.
         return {"status": "ready"}
+
+    # POST /api/v1/forward-email — inbound email webhook (Postfix pipe).
+    app.include_router(forward_email_router, prefix="/api/v1")
 
     # --- Example 1: I/O-bound, fully async (best for high concurrency) ----- #
     @app.get("/api/v1/aggregate")
