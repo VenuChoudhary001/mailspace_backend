@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
-import asyncpg
+from supabase import AsyncClient
+
+from app.core import supabase_client
 
 
 @dataclass(frozen=True)
@@ -18,10 +21,11 @@ class AliasMapping:
 
 
 class AliasRecipientResolver:
-    """Map an incoming alias address to its active, verified destination(s) via Postgres."""
+    """Map an incoming alias address to its active, verified destination(s) via Supabase RPC."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, client: AsyncClient | None = None) -> None:
+        self._client = client
+
 
     async def resolve_mapping(self, recipient: str) -> AliasMapping | None:
         normalized = recipient.strip().lower()
@@ -32,33 +36,28 @@ class AliasRecipientResolver:
         if not local_part or not domain_name:
             return None
 
-        async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT
-                    alias_id,
-                    user_id,
-                    domain_id,
-                    domain_name,
-                    local_part,
-                    from_name,
-                    destination_emails
-                FROM public.get_alias_mapping($1)
-                """,
-                normalized,
-            )
+        response = await supabase_client.rpc(
+            "get_alias_mapping",
+            {"p_recipient": normalized},
+        ).execute()
 
-        if row is None or not row["destination_emails"]:
+        rows: list[dict[str, Any]] = response.data or []
+        if not rows:
+            return None
+
+        row = rows[0]
+        destinations = row.get("destination_emails") or []
+        if not destinations:
             return None
 
         return AliasMapping(
-            alias_id=row["alias_id"],
-            user_id=row["user_id"],
-            domain_id=row["domain_id"],
-            domain_name=row["domain_name"],
-            local_part=row["local_part"],
-            from_name=row["from_name"],
-            destination_emails=list(row["destination_emails"]),
+            alias_id=UUID(str(row["alias_id"])),
+            user_id=UUID(str(row["user_id"])),
+            domain_id=UUID(str(row["domain_id"])),
+            domain_name=str(row["domain_name"]),
+            local_part=str(row["local_part"]),
+            from_name=row.get("from_name"),
+            destination_emails=[str(d) for d in destinations],
         )
 
     async def resolve(self, recipient: str) -> str | None:
