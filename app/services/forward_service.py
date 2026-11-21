@@ -54,8 +54,7 @@ class ForwardService:
             raise InternalError() from None         # `from None`: no traceback with email data
 
     async def _forward(self, raw: bytes, recipient: str, ref: str) -> ForwardResult:
-        # destination = await self._resolver.resolve(recipient)
-        destination = "venu.choudhary2000@gmail.com"
+        destination = await self._resolver.resolve(recipient)
         if destination is None:
             raise UnknownRecipient()
 

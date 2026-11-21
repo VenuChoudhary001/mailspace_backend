@@ -11,7 +11,6 @@ class Settings(BaseSettings):
 
     forward_from_address: str  = Field(default="mail@relayhost.site")   # on your verified Resend domain
     webhook_secret: bytes   = Field(..., validation_alias="WEBHOOK_SECRET")      # same secret the Postfix pipe script uses
-    forward_brand: str = "Mail Forwarder"
     max_raw_bytes: int = 25 * 1024 * 1024
 
     resend_api_key: str = Field(..., validation_alias="RESEND_API_KEY")

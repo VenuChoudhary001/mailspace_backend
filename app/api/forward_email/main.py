@@ -34,7 +34,6 @@ def get_forward_service(
     return ForwardService(
         builder=OutboundEmailBuilder(
             from_address=settings.forward_from_address,
-            brand=settings.forward_brand,
         ),
         resolver=resolver,
         sender=sender,

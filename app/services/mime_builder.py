@@ -72,11 +72,9 @@ class OutboundEmailBuilder:
     def __init__(
         self,
         from_address: str,                      # on your verified Resend domain
-        brand: str = "Mail Forwarder",
         loop_header: str = "X-Forwarded-By-Relay",
     ) -> None:
         self._from_address = from_address
-        self._brand = brand
         self._loop_header = loop_header
 
     def build(self, raw: bytes, destination: str) -> OutboundEmail | None:
@@ -95,7 +93,7 @@ class OutboundEmailBuilder:
 
         # From: always OUR domain. Only the display name comes from the sender.
         origin_name, origin_addr = (from_pairs or reply_pairs)[0]
-        display = f"{_one_line(origin_name) or _one_line(origin_addr)} via {self._brand}"
+        display = f"{_one_line(origin_name) or _one_line(origin_addr)}"
 
         # Bodies, passed through untouched.
         text_part = msg.get_body(preferencelist=("plain",))
