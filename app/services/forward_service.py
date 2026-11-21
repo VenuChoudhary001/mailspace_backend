@@ -12,7 +12,7 @@ from app.services.exceptions import (
     MessageTooLarge, TransientSendError, UnknownRecipient,
 )
 from app.services.mime_builder import OutboundEmailBuilder
-
+from supabase import AsyncClient
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +36,6 @@ class ForwardService:
         self._resolver = resolver
         self._sender = sender
         self._max_raw_bytes = max_raw_bytes
-
     async def forward(self, *, raw_email_b64: str, recipient: str) -> ForwardResult:
         raw = self._decode(raw_email_b64)
         ref = hashlib.sha256(raw).hexdigest()[:12]   # the only message id that reaches logs
@@ -59,7 +58,7 @@ class ForwardService:
             raise UnknownRecipient()
 
         # Parsing is CPU-bound and emails can be large: keep it off the event loop.
-        outbound = await asyncio.to_thread(self._builder.build, raw, destination)
+        outbound = await asyncio.to_thread(self._builder.build, raw, destination, recipient)
         if outbound is None:
             logger.warning("dropped ref=%s reason=loop", ref)
             return ForwardResult(ForwardOutcome.DROPPED, reason="loop")

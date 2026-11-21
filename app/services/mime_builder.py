@@ -4,9 +4,9 @@ import os
 import re
 from email import policy
 from email.parser import BytesParser
-from email.utils import getaddresses
+from email.utils import getaddresses, parseaddr
 from app.services.exceptions import MalformedEmail
-from app.models.forward_mail import OutboundAttachment, OutboundEmail   # was: just OutboundEmail
+from app.models.forward_mail import OutboundAttachment, OutboundEmail
 
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
@@ -34,6 +34,7 @@ def _body_text(part) -> str:
     except (LookupError, UnicodeDecodeError, ValueError):
         raw = part.get_payload(decode=True) or b""
         return raw.decode("utf-8", errors="replace")
+
 
 def _make_attachment(part, data: bytes, ctype: str, index: int) -> OutboundAttachment:
     # basename() strips any path like "../../x", so filenames can't be abused
@@ -68,6 +69,7 @@ def _collect_attachments(part, skip: list, out: list[OutboundAttachment]) -> Non
     data = part.get_payload(decode=True) or b""
     out.append(_make_attachment(part, data, part.get_content_type(), len(out)))
 
+
 class OutboundEmailBuilder:
     def __init__(
         self,
@@ -77,7 +79,7 @@ class OutboundEmailBuilder:
         self._from_address = from_address
         self._loop_header = loop_header
 
-    def build(self, raw: bytes, destination: str) -> OutboundEmail | None:
+    def build(self, raw: bytes, destination: str, recipient: str) -> OutboundEmail | None:
         msg = BytesParser(policy=policy.default).parsebytes(raw)
 
         # Already forwarded by us once? Stop, so we never loop.
@@ -93,7 +95,12 @@ class OutboundEmailBuilder:
 
         # From: always OUR domain. Only the display name comes from the sender.
         origin_name, origin_addr = (from_pairs or reply_pairs)[0]
-        display = f"{_one_line(origin_name) or _one_line(origin_addr)}"
+        display = _one_line(origin_name) or _one_line(origin_addr)
+
+        # Subject: tag with the alias the mail was sent to -> "[alias] : Subject"
+        alias = _one_line(parseaddr(recipient)[1])
+        subject = _one_line(msg.get("Subject", ""))
+        tagged_subject = f"[{alias}] : {subject}" if alias else subject
 
         # Bodies, passed through untouched.
         text_part = msg.get_body(preferencelist=("plain",))
@@ -107,17 +114,20 @@ class OutboundEmailBuilder:
         if text is None and html is None:
             text = " "  # Resend needs html or text; this covers attachment-only mail
 
-        headers = {self._loop_header: "1"}
+        headers = {
+            self._loop_header: "1",
+            "X-Original-Recipient": _one_line(recipient),
+        }
         if msg.get("Message-ID"):
             headers["X-Original-Message-ID"] = _one_line(msg["Message-ID"])
 
         return OutboundEmail(
             sender=_format_address(display, self._from_address),
             to=[destination],
-            subject=_one_line(msg.get("Subject", "")),   # unchanged, no "Fwd:" prefix
+            subject=tagged_subject,
             reply_to=reply_to,
             text=text,
             html=html,
             headers=headers,
-            attachments=attachments,                              # added in step 3b
+            attachments=attachments,
         )

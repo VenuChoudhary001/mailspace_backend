@@ -15,12 +15,18 @@ from app.core.config import settings
 from app.services.mime_builder import OutboundEmailBuilder
 from app.services.recipient_resolver import AliasRecipientResolver
 from app.services.resend import ResendEmailSender
-
+from supabase import AsyncClient
 router = APIRouter(tags=["forwarding"])
 
-@lru_cache
-def get_recipient_resolver() -> AliasRecipientResolver:
-    return AliasRecipientResolver()
+
+
+def _db(request: Request):
+    return request.app.state.db
+
+
+# @lru_cache
+async def get_recipient_resolver(request:Request) -> AliasRecipientResolver:
+    return AliasRecipientResolver(client=_db(request))
 
 
 def get_email_sender(request: Request) -> ResendEmailSender:

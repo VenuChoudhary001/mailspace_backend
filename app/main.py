@@ -48,7 +48,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api import forward_email_router
-from app.core import settings, supabase_client
+from app.core import settings
+from app.core import db
 from supabase import acreate_client
 
 # --------------------------------------------------------------------------- #
@@ -178,7 +179,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # TODO: init DB engine / Redis pool / message broker here, e.g.
     #   app.state.db = await create_async_engine(...)
     #   app.state.redis = redis.asyncio.from_url(...)
-    supabase_client = acreate_client(settings.supabase_url, settings.supabase_db_password)
+    db.supabase_client = await acreate_client(settings.supabase_url, settings.supabase_secret)
+    
+    app.state.db = db.supabase_client
     app.state.ready = True
     logger.info(
         "Started pid=%s env=%s workers=%s",

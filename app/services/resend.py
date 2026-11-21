@@ -4,6 +4,8 @@ import httpx
 from app.core.config import settings
 from app.models.forward_mail import OutboundEmail
 from app.services.exceptions import PermanentSendError, TransientSendError
+import logging
+logger = logging.getLogger(__name__)
 
 
 RESEND_API_URL = "https://api.resend.com/emails"
@@ -74,8 +76,17 @@ class ResendEmailSender:
             if response.status_code == 429 or response.status_code >= 500:
                 raise TransientSendError()
             if response.status_code >= 400:
+                try:
+                    err = response.json()
+                    logger.warning(
+                        "resend rejected status=%s name=%s message=%s",
+                        response.status_code, err.get("name"), err.get("message"),
+                    )
+                except ValueError:
+                    logger.warning("resend rejected status=%s (non-JSON body)", response.status_code)
                 raise PermanentSendError()
             # 2xx: accepted by Resend, nothing to return
+
         finally:
             if owned_client:
                 await client.aclose()
